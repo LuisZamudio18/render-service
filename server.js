@@ -13,34 +13,42 @@ app.post("/render", async (req, res) => {
       return res.status(400).json({ error: "Faltan datos" });
     }
 
+    // 1️⃣ Obtener duración real del audio
+    const duration = execSync(
+      `ffprobe -i "${audioPath}" -show_entries format=duration -v quiet -of csv="p=0"`
+    ).toString().trim();
+
+    const audioDuration = parseFloat(duration);
+
+    // 2️⃣ Crear archivo concat.txt
     const concatContent = videoPaths
       .map(v => `file '${v}'`)
       .join("\n");
 
     fs.writeFileSync("concat.txt", concatContent);
 
+    // 3️⃣ Renderizar exactamente la duración del audio
     const command = `
       ffmpeg -y \
       -f concat -safe 0 -i concat.txt \
-      -i ${audioPath} \
-      -c:v libx264 -c:a aac -shortest \
+      -i "${audioPath}" \
+      -t ${audioDuration} \
+      -map 0:v:0 -map 1:a:0 \
+      -c:v libx264 -c:a aac \
+      -pix_fmt yuv420p \
       output.mp4
     `;
 
-    exec(command, (err) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ error: "Error renderizando video" });
-      }
+    execSync(command);
 
-      res.download("output.mp4");
-    });
+    res.download("output.mp4");
 
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Error interno" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error renderizando video" });
   }
 });
+
 
 const PORT = process.env.PORT || 3000;
 
